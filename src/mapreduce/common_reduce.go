@@ -1,15 +1,9 @@
 package mapreduce
 
 import( 
-           "sort"
            "os"
            "encoding/json"
        )
-
-type ByKey []KeyValue
-func (a ByKey) Len() int           { return len(a) }
-func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
@@ -55,7 +49,7 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
-        var kvs [] KeyValue
+        myMap := make(map[string]([]string))
         for m:=0;m<nMap;m++ {
            fileName := reduceName(jobName, m, reduceTask)
            file, err := os.Open(fileName)
@@ -71,12 +65,16 @@ func doReduce(
                   //panic(err)
                   break
               }
-              kvs = append(kvs, kv)
+
+              valueVector, ok := myMap[kv.Key]
+              if ok {
+                 myMap[kv.Key] = append(valueVector, kv.Value)
+              }else{
+                 myMap[kv.Key] = append(make([] string,0), kv.Value)
+              }
            }
            file.Close()
         }
- 
-        sort.Sort(ByKey(kvs))
 
         oFile, err := os.Create(outFile)
         if err != nil {
@@ -84,25 +82,8 @@ func doReduce(
         }
         enc := json.NewEncoder(oFile)
 
-        var currentValues [] string = nil
-        var currentKey string
-        for _, keyValue := range kvs {
-            if currentValues == nil{
-               currentValues = append(currentValues, keyValue.Value)
-               currentKey = keyValue.Key
-            }else{
-               if currentKey == keyValue.Key{
-                   currentValues = append(currentValues, keyValue.Value)
-               }else{
-                   result := reduceF(currentKey, currentValues)
-                   enc.Encode(KeyValue{currentKey, result})
-                   currentValues = nil
-                   currentValues = append(currentValues, keyValue.Value)
-                   currentKey = keyValue.Key
-               }
-            }
+        for key, value := range myMap {
+            enc.Encode(KeyValue{key, reduceF(key,value)})
         }
-        result := reduceF(currentKey, currentValues)
-        enc.Encode(KeyValue{currentKey, result})
         oFile.Close()
 }

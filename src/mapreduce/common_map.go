@@ -3,9 +3,16 @@ package mapreduce
 import (
 	"hash/fnv"
         "io/ioutil"
-        "os"
-        "encoding/json"
+	"os"
+	"encoding/json"
 )
+
+func closeAll(file []os.File) {
+	for i := range file {
+		file[i].Close()
+	}
+}
+
 
 func doMap(
 	jobName string, // the name of the MapReduce job
@@ -56,40 +63,31 @@ func doMap(
 	//
 	// Your code here (Part I).
 	//
-        file, err := os.Open(inFile) 
-        if err != nil {
-            panic(err)
-        }
- 
-        charArr, errorInfo := ioutil.ReadAll(file)
-        if errorInfo != nil{
-            panic(errorInfo)
-        }
-        
-        file.Close()
+        contents, error := ioutil.ReadFile(inFile)
+	if error != nil {
+		panic(error)
+	}
+	kv := mapF(inFile, string(contents[:]))
 
-        contents := string(charArr)
-     
-        keyValues := mapF(inFile, contents)
+	enc := make([]json.Encoder, nReduce)
+	fileSet := make([]os.File, nReduce)
 
-
-        for _, keyValue := range keyValues {
-
-             key := keyValue.Key
-
-             r := ihash(key) % nReduce
-             interFileName := reduceName(jobName, mapTask, r)
-
-             f, err := os.OpenFile(interFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
-             if err != nil {
-                 panic(err)
-             }
-
-             enc := json.NewEncoder(f)
-             err = enc.Encode(&keyValue)
-
-             f.Close()
-        }
+	for i := range enc {
+		f, err := os.Create(reduceName(jobName, mapTask, i))
+		if err != nil {
+			panic(err)
+		}
+		enc[i] = *json.NewEncoder(f)
+		fileSet[i] = *f
+	}
+	defer closeAll(fileSet)
+	for _, k := range kv {
+		key := ihash(k.Key) % nReduce
+		err := enc[key].Encode(&k)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func ihash(s string) int {
