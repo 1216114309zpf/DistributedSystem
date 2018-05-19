@@ -76,17 +76,15 @@ func doReduce(
            file.Close()
         }
  
-        var final [] KeyValue 
-      
         sort.Sort(ByKey(kvs))
 
-        oFile, err := os.OpenFile(outFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+        oFile, err := os.Create(outFile)
         if err != nil {
             panic(err)
         }
         enc := json.NewEncoder(oFile)
 
-        var currentValues [] string
+        var currentValues [] string = nil
         var currentKey string
         for _, keyValue := range kvs {
             if currentValues == nil{
@@ -97,18 +95,14 @@ func doReduce(
                    currentValues = append(currentValues, keyValue.Value)
                }else{
                    result := reduceF(currentKey, currentValues)
-                   //enc.Encode(KeyValue{currentKey, result})
-                   final = append(final,KeyValue{currentKey, result})
+                   enc.Encode(KeyValue{currentKey, result})
                    currentValues = nil
+                   currentValues = append(currentValues, keyValue.Value)
+                   currentKey = keyValue.Key
                }
             }
         }
         result := reduceF(currentKey, currentValues)
-        //enc.Encode(KeyValue{currentKey, result})
-        final = append(final,KeyValue{currentKey, result})
-        sort.Sort(ByKey(final))
-        for _, kv := range final {
-            enc.Encode(&kv)
-        }
+        enc.Encode(KeyValue{currentKey, result})
         oFile.Close()
 }
