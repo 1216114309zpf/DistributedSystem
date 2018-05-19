@@ -1,5 +1,16 @@
 package mapreduce
 
+import( 
+           "sort"
+           "os"
+           "encoding/json"
+       )
+
+type ByKey []KeyValue
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
+
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
 	reduceTask int, // which reduce task this is
@@ -44,4 +55,60 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
+        var kvs [] KeyValue
+        for m:=0;m<nMap;m++ {
+           fileName := reduceName(jobName, m, reduceTask)
+           file, err := os.Open(fileName)
+           if err != nil{
+               panic(err)
+           }
+
+           var kv KeyValue
+           dec := json.NewDecoder(file)
+           for {
+              err := dec.Decode(&kv)
+              if err !=nil {
+                  //panic(err)
+                  break
+              }
+              kvs = append(kvs, kv)
+           }
+           file.Close()
+        }
+ 
+        var final [] KeyValue 
+      
+        sort.Sort(ByKey(kvs))
+
+        oFile, err := os.OpenFile(outFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+        if err != nil {
+            panic(err)
+        }
+        enc := json.NewEncoder(oFile)
+
+        var currentValues [] string
+        var currentKey string
+        for _, keyValue := range kvs {
+            if currentValues == nil{
+               currentValues = append(currentValues, keyValue.Value)
+               currentKey = keyValue.Key
+            }else{
+               if currentKey == keyValue.Key{
+                   currentValues = append(currentValues, keyValue.Value)
+               }else{
+                   result := reduceF(currentKey, currentValues)
+                   //enc.Encode(KeyValue{currentKey, result})
+                   final = append(final,KeyValue{currentKey, result})
+                   currentValues = nil
+               }
+            }
+        }
+        result := reduceF(currentKey, currentValues)
+        //enc.Encode(KeyValue{currentKey, result})
+        final = append(final,KeyValue{currentKey, result})
+        sort.Sort(ByKey(final))
+        for _, kv := range final {
+            enc.Encode(&kv)
+        }
+        oFile.Close()
 }
