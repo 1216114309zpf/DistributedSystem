@@ -30,5 +30,31 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	//
 	// Your code here (Part III, Part IV).
 	//
+        finishChan:=make(chan string)
+        workerCount:=0
+        for task:=0;task<ntasks;task++ {
+             var worker string
+             select {
+                 case worker=<-registerChan:
+                        workerCount++
+                 case worker=<-finishChan:
+             }
+             go func(taskNo int,worker string){
+                 args:=new(DoTaskArgs)
+                 args.JobName=jobName
+                 if phase==mapPhase {
+                      args.File=mapFiles[taskNo]
+                 }
+                 args.Phase=phase
+                 args.TaskNumber=taskNo
+                 args.NumOtherPhase=n_other
+                 call(worker,"Worker.DoTask",args,nil)
+                 finishChan<-worker
+             }(task,worker)
+        }
+
+        for count:=0;count<workerCount;count++{
+            <-finishChan
+        }
 	fmt.Printf("Schedule: %v done\n", phase)
 }
