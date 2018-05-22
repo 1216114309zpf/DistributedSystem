@@ -30,15 +30,40 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	//
 	// Your code here (Part III, Part IV).
 	//
+        var failedTask [] int
         finishChan:=make(chan string)
-        workerCount:=0
+        callReplyChan:=make(chan bool)
+        failedTaskChan:=make(chan int)
+        //workerCount:=0
+        successCount:=0
         for task:=0;task<ntasks;task++ {
              var worker string
              select {
                  case worker=<-registerChan:
-                        workerCount++
+                       // workerCount++
                  case worker=<-finishChan:
+                        reply:=<-callReplyChan
+                        if reply==false {
+                            failedTask = append(failedTask, <-failedTaskChan)
+                            task--
+                            continue
+                        }else{
+                            successCount++
+                            if successCount==ntasks {
+                                  break
+                            }
+                        }
              }
+
+             var taskNo int
+             if failedTask==nil {
+                  taskNo=task
+             }else{
+                  taskNo=failedTask[0]
+                  failedTask=failedTask[1:]
+                  task--
+             }
+
              go func(taskNo int,worker string){
                  args:=new(DoTaskArgs)
                  args.JobName=jobName
@@ -48,13 +73,17 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
                  args.Phase=phase
                  args.TaskNumber=taskNo
                  args.NumOtherPhase=n_other
-                 call(worker,"Worker.DoTask",args,nil)
+                 reply:=call(worker,"Worker.DoTask",args,nil)
                  finishChan<-worker
-             }(task,worker)
+                 callReplyChan<-reply
+                 if reply==false {
+                     failedTaskChan<-taskNo
+                 }
+             }(taskNo,worker)
         }
 
-        for count:=0;count<workerCount;count++{
-            <-finishChan
-        }
+        //for count:=0;count<workerCount;count++{
+          //  <-finishChan
+        //}
 	fmt.Printf("Schedule: %v done\n", phase)
 }
