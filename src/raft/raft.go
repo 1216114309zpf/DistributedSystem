@@ -437,8 +437,7 @@ func (rf *Raft) Candidate() {
          
          rf.currentTerm++
          rf.votedFor = rf.me
-         d := time.Duration(VARIATION * rand.Float64() + BASIC)
-         rf.electTimer.Reset(d * time.Millisecond)
+         rf.UpdateElectTimer()
 
          if rf.sendRequestVoteResult() {
              rf.role = LEADER
@@ -453,6 +452,7 @@ func (rf *Raft) Candidate() {
 }
 
 func (rf *Raft) sendRequestVoteResult() bool {
+      originalTerm := rf.currentTerm 
       args := RequestVoteArgs{rf.currentTerm, rf.me, rf.log[len(rf.log)-1].Term,len(rf.log)-1}
       var replys []RequestVoteReply = make([]RequestVoteReply, len(rf.peers))
       successChan := make(chan bool)
@@ -473,7 +473,7 @@ func (rf *Raft) sendRequestVoteResult() bool {
                      flag           = true
                }
 
-               if replys[i].VoteGranted {
+               if replys[i].VoteGranted && replys[i].Term == originalTerm {
                     votes++
                }
            }
