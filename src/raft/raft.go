@@ -172,30 +172,26 @@ type AppendEntriesReply struct {
 // AppendEntries RPC handler
 //
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-       reply.Term = rf.currentTerm
-       if args.Term < rf.currentTerm || len(rf.log) < args.PrevLogIndex+1 || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
-           reply.Success = false
-           if args.Term > rf.currentTerm {
-               rf.currentTerm = args.Term
-               if rf.role != FOLLOWER {
-                   //convert to follower
-                   rf.role = FOLLOWER
-               }
-           }
-           return
-       }else{
-           reply.Success = true
+       if args.Term > rf.currentTerm {
+            rf.currentTerm = args.Term
+            rf.role = FOLLOWER
+            rf.votedFor = -1
        }
+
+       reply.Term = rf.currentTerm
+       if args.Term < rf.currentTerm {
+           reply.Success = false
+           return 
+       }
+
+       if len(rf.log) < args.PrevLogIndex+1 || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+           reply.Success = false
+           return
+       }
+
+       reply.Success = true
 
        AppendEntriesOnSuccess(rf,args)
-
-       if args.Term > rf.currentTerm {
-           rf.currentTerm = args.Term
-           if rf.role != FOLLOWER {
-                //convert to follower
-                rf.role = FOLLOWER
-           }
-       }
 }
 
 //
@@ -285,9 +281,16 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 
         //maybe here we need a lock!
+        if args.Term > rf.currentTerm {
+             rf.currentTerm = args.Term
+             rf.role        = FOLLOWER
+             rf.votedFor    = -1 
+        }
+
         reply.Term = rf.currentTerm
         if args.Term < rf.currentTerm {
             reply.VoteGranted = false
+            return 
         }else{
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
                  rf.votedFor = args.CandidateId
@@ -295,14 +298,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
                  //reset rf.electTimer if 
             }else{
                  reply.VoteGranted = false
-            }
-        }
-
-
-        if args.Term > rf.currentTerm {
-            rf.currentTerm = args.Term
-            if rf.role != FOLLOWER {
-                //convert to follower
             }
         }
 }
