@@ -171,6 +171,12 @@ type AppendEntriesReply struct {
 //
 // AppendEntries RPC handler
 //
+
+func (rf *Raft) UpdateElectTimer() {
+      d := time.Duration(VARIATION * rand.Float64() + BASIC)
+      rf.electTimer.Reset(d * time.Millisecond)
+}
+
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
        if args.Term > rf.currentTerm {
             rf.currentTerm = args.Term
@@ -190,7 +196,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        }
 
        reply.Success = true
-
+       
+       //reset electTimer
+       rf.UpdateElectTimer()
        AppendEntriesOnSuccess(rf,args)
 }
 
@@ -294,10 +302,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             return 
         }else{
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
-                 rf.votedFor = args.CandidateId
                  reply.VoteGranted = true
                  rf.votedFor = args.CandidateId
-                 //reset rf.electTimer if 
+                 //reset rf.electTimer 
+                 rf.UpdateElectTimer()
             }else{
                  reply.VoteGranted = false
             }
