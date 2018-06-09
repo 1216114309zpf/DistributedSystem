@@ -242,6 +242,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
              if success {
                  if replys[i].Term > rf.currentTerm {
                      rf.currentTerm = replys[i].Term
+                     rf.votedFor = -1
                      rf.role = FOLLOWER
                  }
                  //update nextIndex and matchIndex of the leader
@@ -295,6 +296,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
                  rf.votedFor = args.CandidateId
                  reply.VoteGranted = true
+                 rf.votedFor = args.CandidateId
                  //reset rf.electTimer if 
             }else{
                  reply.VoteGranted = false
@@ -451,18 +453,26 @@ func (rf *Raft) sendRequestVoteResult() bool {
            go rf.sendRequestVoteParallel(i,&args, &replys[i], successChan)
       }
 
+      flag := false
       votes := 0
       for i:=0; i<len(rf.peers); i++ {
            success:= <-successChan
            if success {
+               if replys[i].Term > rf.currentTerm {
+                     rf.currentTerm = replys[i].Term
+                     rf.votedFor    = -1
+                     rf.role        = FOLLOWER
+                     flag           = true
+               }
+
                if replys[i].VoteGranted {
                     votes++
                }
-               
-               if replys[i].Term > rf.currentTerm {
-                    rf.currentTerm = replys[i].Term
-               }
            }
+      }
+
+      if flag {
+          return false
       }
 
       if votes > len(rf.peers)/2 {
