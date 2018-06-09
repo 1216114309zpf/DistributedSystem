@@ -54,6 +54,10 @@ const (
            FOLLOWER  = 0
            CANDIDATE = 1
            LEADER    = 2
+
+           BASIC     = 200
+           VARIATION = 100
+           APPEND    = 110
       )
 
 func min(a int, b int) int {
@@ -230,10 +234,11 @@ func (rf *Raft) sendAppendEntriesParallel() {
         successChan := make(chan bool)
  
         for i:=0; i<len(rf.peers); i++ {
+             serverNo:=i
              go func(server int, args *AppendEntriesArgs, reply *AppendEntriesReply, successChan chan bool) {
-                 success :=  rf.sendAppendEntries(i,args,reply)
+                 success :=  rf.sendAppendEntries(server,args,reply)
                  successChan<-success
-             }(i,&args,&replys[i],successChan)
+             }(serverNo,&args,&replys[i],successChan)
         }
 
         for i:=0; i<len(rf.peers); i++ {
@@ -375,7 +380,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //
 func (rf *Raft) Follower() {
       rf.role = FOLLOWER
-      d := time.Duration(150 * rand.Float64() + 150)
+      d := time.Duration(VARIATION * rand.Float64() + BASIC)
       if rf.electTimer == nil {
           rf.electTimer = time.NewTimer(d * time.Millisecond)
       }else{
@@ -397,19 +402,21 @@ func (rf *Raft) Leader() {
               go rf.Follower()
               break
           }
+      
+
+          d := time.Duration(APPEND)
+          if rf.appendTimer == nil {
+              rf.appendTimer = time.NewTimer(d * time.Millisecond)
+          }else{
+              rf.appendTimer.Reset(d * time.Millisecond)
+          }
+
+          //send AppendEntries parallelly and periodically
+          rf.sendAppendEntriesParallel()
+
+          <-rf.appendTimer.C
+ 
       }
-
-      d := time.Duration(100)
-      if rf.appendTimer == nil {
-          rf.appendTimer = time.NewTimer(d * time.Millisecond)
-      }else{
-          rf.appendTimer.Reset(d * time.Millisecond)
-      }
-
-      //send AppendEntries parallelly and periodically
-      rf.sendAppendEntriesParallel()
-
-      <-rf.appendTimer.C
 }
 
 //
@@ -425,7 +432,7 @@ func (rf *Raft) Candidate() {
          
          rf.currentTerm++
          rf.votedFor = rf.me
-         d := time.Duration(200 * rand.Float64() + 100)
+         d := time.Duration(VARIATION * rand.Float64() + BASIC)
          rf.electTimer.Reset(d * time.Millisecond)
 
          if rf.sendRequestVoteResult() {
