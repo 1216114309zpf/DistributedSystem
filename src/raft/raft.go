@@ -21,6 +21,15 @@ import "sync"
 import "labrpc"
 import "time"
 import "math/rand"
+import "fmt"
+
+const DEBUG = true
+func printf(format string, a ...interface{}) (n int, err error) {
+        if DEBUG {
+                fmt.Printf(format, a...)
+        }
+        return
+}
 
 // import "bytes"
 // import "labgob"
@@ -402,6 +411,7 @@ func (rf *Raft) Follower() {
 //call this function when a peer transmits to Leader state.
 //
 func (rf *Raft) Leader() {
+      printf("Peer %d becomes leader in term %d\n",rf.me, rf.currentTerm)
       for ;true; {
           if rf.role != LEADER {
               go rf.Follower()
@@ -430,7 +440,6 @@ func (rf *Raft) Leader() {
 func (rf *Raft) Candidate() {
      for ;true; {
          if rf.role != CANDIDATE {
-              rf.votedFor = -1
               go rf.Follower()
               break
          }
@@ -439,11 +448,12 @@ func (rf *Raft) Candidate() {
          rf.votedFor = rf.me
          rf.UpdateElectTimer()
 
+         printf("Peer %d start a new election in term %d\n", rf.me, rf.currentTerm)
          if rf.sendRequestVoteResult() {
              rf.role = LEADER
-             rf.votedFor = -1
              rf.electTimer.Stop()
              go rf.Leader()
+             printf("Peer %d breaks now\n",rf.me)
              break
          }
          
@@ -473,12 +483,13 @@ func (rf *Raft) sendRequestVoteResult() bool {
                      flag           = true
                }
 
-               if replys[i].VoteGranted && replys[i].Term == originalTerm {
+               if replys[i].VoteGranted && rf.currentTerm == originalTerm {
                     votes++
                }
            }
       }
 
+      printf("Peer %d in Term %d get %d votes, total peers %d\n",rf.me, originalTerm, votes, len(rf.peers))
       if flag {
           return false
       }
