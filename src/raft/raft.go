@@ -181,10 +181,24 @@ type AppendEntriesReply struct {
 // AppendEntries RPC handler
 //
 
-func (rf *Raft) UpdateElectTimer() {
+func (rf *Raft) ResetElectTimer() {
       d := time.Duration(VARIATION * rand.Float64() + BASIC)
-      rf.electTimer.Reset(d * time.Millisecond)
+      if rf.electTimer==nil {
+           rf.electTimer = time.NewTimer(d * time.Millisecond)
+      }else{
+           rf.electTimer.Reset(d * time.Millisecond)
+      }
 }
+
+func (rf *Raft) ResetAppendTimer() {
+      d := time.Duration(APPEND)
+      if rf.appendTimer==nil {
+           rf.appendTimer = time.NewTimer(d * time.Millisecond)
+      }else{
+           rf.appendTimer.Reset(d * time.Millisecond)
+      }
+}
+
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
        if args.Term > rf.currentTerm {
@@ -205,9 +219,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        }
 
        reply.Success = true
-       
+       if rf.role == CANDIDATE {
+             rf.role = FOLLOWER
+       } 
        //reset electTimer
-       rf.UpdateElectTimer()
+       rf.ResetElectTimer()
+
        AppendEntriesOnSuccess(rf,args)
 }
 
@@ -313,8 +330,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
                  reply.VoteGranted = true
                  rf.votedFor = args.CandidateId
+                 if rf.role == LEADER {
+                      rf.role = FOLLOWER
+                 }
                  //reset rf.electTimer 
-                 rf.UpdateElectTimer()
+                 rf.ResetElectTimer()
             }else{
                  reply.VoteGranted = false
             }
@@ -394,12 +414,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //
 func (rf *Raft) Follower() {
       rf.role = FOLLOWER
-      d := time.Duration(VARIATION * rand.Float64() + BASIC)
-      if rf.electTimer == nil {
-          rf.electTimer = time.NewTimer(d * time.Millisecond)
-      }else{
-          rf.electTimer.Reset(d * time.Millisecond)
-      }
+
+      rf.ResetElectTimer()
    
       <-rf.electTimer.C //wait for election timeout,
 
@@ -417,14 +433,8 @@ func (rf *Raft) Leader() {
               go rf.Follower()
               break
           }
-      
-
-          d := time.Duration(APPEND)
-          if rf.appendTimer == nil {
-              rf.appendTimer = time.NewTimer(d * time.Millisecond)
-          }else{
-              rf.appendTimer.Reset(d * time.Millisecond)
-          }
+     
+          rf.ResetAppendTimer()
 
           //send AppendEntries parallelly and periodically
           rf.sendAppendEntriesParallel()
@@ -446,7 +456,8 @@ func (rf *Raft) Candidate() {
          
          rf.currentTerm++
          rf.votedFor = rf.me
-         rf.UpdateElectTimer()
+
+         rf.ResetElectTimer()
 
          printf("Peer %d start a new election in term %d\n", rf.me, rf.currentTerm)
          if rf.sendRequestVoteResult() {
