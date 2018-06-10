@@ -64,9 +64,9 @@ const (
            CANDIDATE = 1
            LEADER    = 2
 
-           BASIC     = 200
+           BASIC     = 300
            VARIATION = 100
-           APPEND    = 110
+           APPEND    = 140
       )
 
 func min(a int, b int) int {
@@ -199,7 +199,6 @@ func (rf *Raft) ResetAppendTimer() {
       }
 }
 
-
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
        if args.Term > rf.currentTerm {
             rf.currentTerm = args.Term
@@ -221,11 +220,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        reply.Success = true
        if rf.role == CANDIDATE {
              rf.role = FOLLOWER
-       } 
-       //reset electTimer
-       rf.ResetElectTimer()
+       }else if rf.role == LEADER {
+
+       }else{
+             rf.ResetElectTimer()
+       }
 
        AppendEntriesOnSuccess(rf,args)
+       return
 }
 
 //
@@ -313,7 +315,7 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// Your code here (2A, 2B).
+        // Your code here (2A, 2B).
 
         //maybe here we need a lock!
         if args.Term > rf.currentTerm {
@@ -330,16 +332,21 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
                  reply.VoteGranted = true
                  rf.votedFor = args.CandidateId
+                 printf("Peer %d vote for peer %d, in term %d\n", rf.me, args.CandidateId, rf.currentTerm)
                  if rf.role == LEADER {
                       rf.role = FOLLOWER
+                 }else if rf.role == CANDIDATE {
+              
+                 }else{
+                      rf.ResetElectTimer()
                  }
-                 //reset rf.electTimer 
-                 rf.ResetElectTimer()
             }else{
                  reply.VoteGranted = false
             }
         }
+        return 
 }
+
 
 func moreUpToDate(me *Raft,candidate *RequestVoteArgs) bool {
       if candidate.LastLogTerm > me.log[len(me.log)-1].Term || 
@@ -437,7 +444,7 @@ func (rf *Raft) Leader() {
           rf.ResetAppendTimer()
 
           //send AppendEntries parallelly and periodically
-          rf.sendAppendEntriesParallel()
+          go rf.sendAppendEntriesParallel()
 
           <-rf.appendTimer.C
  
@@ -467,26 +474,27 @@ func (rf *Raft) Candidate() {
              printf("Peer %d breaks now\n",rf.me)
              break
          }
-         
-         <-rf.electTimer.C
-     }
+         //<-rf.electTimer.C
+      }
 }
 
 func (rf *Raft) sendRequestVoteResult() bool {
       originalTerm := rf.currentTerm 
       args := RequestVoteArgs{rf.currentTerm, rf.me, rf.log[len(rf.log)-1].Term,len(rf.log)-1}
       var replys []RequestVoteReply = make([]RequestVoteReply, len(rf.peers))
-      successChan := make(chan bool)
-
-      for i:=0; i<len(rf.peers); i++ {
-           go rf.sendRequestVoteParallel(i,&args, &replys[i], successChan)
+      for i:=0;i<len(rf.peers); i++ {
+            replys[i].Term = -1
+            replys[i].VoteGranted = false
       }
 
+      for i:=0; i<len(rf.peers); i++ {
+           go rf.sendRequestVoteParallel(i,&args, &replys[i])
+      }
+   
+      <-rf.electTimer.C
       flag := false
       votes := 0
       for i:=0; i<len(rf.peers); i++ {
-           success:= <-successChan
-           if success {
                if replys[i].Term > rf.currentTerm {
                      rf.currentTerm = replys[i].Term
                      rf.votedFor    = -1
@@ -497,7 +505,6 @@ func (rf *Raft) sendRequestVoteResult() bool {
                if replys[i].VoteGranted && rf.currentTerm == originalTerm {
                     votes++
                }
-           }
       }
 
       printf("Peer %d in Term %d get %d votes, total peers %d\n",rf.me, originalTerm, votes, len(rf.peers))
@@ -512,10 +519,10 @@ func (rf *Raft) sendRequestVoteResult() bool {
       return false
 }
 
-func (rf *Raft) sendRequestVoteParallel(server int,args *RequestVoteArgs, reply *RequestVoteReply,successChan chan bool) {
-      success := rf.sendRequestVote(server, args, reply)
-      successChan<-success
+func (rf *Raft) sendRequestVoteParallel(server int,args *RequestVoteArgs, reply *RequestVoteReply) {
+      rf.sendRequestVote(server, args, reply)
 }
+
 
 //
 // the tester calls Kill() when a Raft instance won't
