@@ -116,6 +116,8 @@ func (rf *Raft) GetState() (int, bool) {
 
 	// Your code here (2A).
         // use a lock maybe
+        rf.mu.Lock()
+        defer rf.mu.Unlock()
         term = rf.currentTerm
         isleader = rf.role==LEADER
 
@@ -200,6 +202,9 @@ func (rf *Raft) ResetAppendTimer() {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+       rf.mu.Lock()
+       defer rf.mu.Unlock()
+
        if args.Term > rf.currentTerm {
             rf.currentTerm = args.Term
             rf.role = FOLLOWER
@@ -263,27 +268,28 @@ func (rf *Raft) sendAppendEntriesParallel() {
         var entries []LogEntry
         args :=  AppendEntriesArgs{rf.currentTerm, rf.me, 0,0,entries,0}
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
-        successChan := make(chan bool)
- 
+        
+        rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
              serverNo:=i
-             go func(server int, args *AppendEntriesArgs, reply *AppendEntriesReply, successChan chan bool) {
-                 success :=  rf.sendAppendEntries(server,args,reply)
-                 successChan<-success
-             }(serverNo,&args,&replys[i],successChan)
+             go func(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
+                 rf.sendAppendEntries(server,args,reply)
+             }(serverNo,&args,&replys[i])
         }
+        rf.mu.Unlock()
 
+        <-rf.appendTimer.C
+
+        rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
-             success := <-successChan
-             if success {
-                 if replys[i].Term > rf.currentTerm {
+                 if replys[i].Success && replys[i].Term > rf.currentTerm {
                      rf.currentTerm = replys[i].Term
                      rf.votedFor = -1
                      rf.role = FOLLOWER
                  }
                  //update nextIndex and matchIndex of the leader
-             }
         }
+        rf.mu.Unlock()
 }
 
 
@@ -318,6 +324,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         // Your code here (2A, 2B).
 
         //maybe here we need a lock!
+        rf.mu.Lock()
+        defer rf.mu.Unlock()
         if args.Term > rf.currentTerm {
              rf.currentTerm = args.Term
              rf.role        = FOLLOWER
@@ -420,13 +428,16 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //call this function when a peer transmits to FOLLOWER state, a peer also begins as a FOLLOWER
 //
 func (rf *Raft) Follower() {
+      rf.mu.Lock()
       rf.role = FOLLOWER
-
       rf.ResetElectTimer()
+      rf.mu.Unlock()
    
       <-rf.electTimer.C //wait for election timeout,
-
+      
+      rf.mu.Lock()
       rf.role = CANDIDATE
+      rf.mu.Unlock()
       go rf.Candidate()
 }
 
@@ -436,17 +447,19 @@ func (rf *Raft) Follower() {
 func (rf *Raft) Leader() {
       printf("Peer %d becomes leader in term %d\n",rf.me, rf.currentTerm)
       for ;true; {
+          rf.mu.Lock()
           if rf.role != LEADER {
               go rf.Follower()
+              rf.mu.Unlock()
               break
           }
-     
+          rf.mu.Unlock()
+
           rf.ResetAppendTimer()
-
           //send AppendEntries parallelly and periodically
-          go rf.sendAppendEntriesParallel()
+          rf.sendAppendEntriesParallel()
 
-          <-rf.appendTimer.C
+          //<-rf.appendTimer.C
  
       }
 }
@@ -456,21 +469,25 @@ func (rf *Raft) Leader() {
 //
 func (rf *Raft) Candidate() {
      for ;true; {
+         rf.mu.Lock()
          if rf.role != CANDIDATE {
               go rf.Follower()
+              rf.mu.Unlock()
               break
          }
          
          rf.currentTerm++
          rf.votedFor = rf.me
-
          rf.ResetElectTimer()
-
          printf("Peer %d start a new election in term %d\n", rf.me, rf.currentTerm)
+         rf.mu.Unlock()
+
          if rf.sendRequestVoteResult() {
+             rf.mu.Lock()
              rf.role = LEADER
              rf.electTimer.Stop()
              go rf.Leader()
+             rf.mu.Unlock()
              printf("Peer %d breaks now\n",rf.me)
              break
          }
@@ -482,18 +499,20 @@ func (rf *Raft) sendRequestVoteResult() bool {
       originalTerm := rf.currentTerm 
       args := RequestVoteArgs{rf.currentTerm, rf.me, rf.log[len(rf.log)-1].Term,len(rf.log)-1}
       var replys []RequestVoteReply = make([]RequestVoteReply, len(rf.peers))
-      for i:=0;i<len(rf.peers); i++ {
-            replys[i].Term = -1
-            replys[i].VoteGranted = false
-      }
+      //for i:=0;i<len(rf.peers); i++ {
+        //    replys[i].Term = -1
+          //  replys[i].VoteGranted = false
+      //}
 
       for i:=0; i<len(rf.peers); i++ {
-           go rf.sendRequestVoteParallel(i,&args, &replys[i])
+           serverNo:=i
+           go rf.sendRequestVoteParallel(serverNo,&args, &replys[serverNo])
       }
    
       <-rf.electTimer.C
       flag := false
       votes := 0
+      rf.mu.Lock()
       for i:=0; i<len(rf.peers); i++ {
                if replys[i].Term > rf.currentTerm {
                      rf.currentTerm = replys[i].Term
@@ -506,6 +525,7 @@ func (rf *Raft) sendRequestVoteResult() bool {
                     votes++
                }
       }
+      rf.mu.Unlock()
 
       printf("Peer %d in Term %d get %d votes, total peers %d\n",rf.me, originalTerm, votes, len(rf.peers))
       if flag {
