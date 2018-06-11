@@ -260,7 +260,11 @@ func AppendEntriesOnSuccess(rf *Raft, args *AppendEntriesArgs) {
 
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-        ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+        var theReply AppendEntriesReply
+        ok := rf.peers[server].Call("Raft.AppendEntries", args, &theReply)
+        rf.mu.Lock()
+        defer rf.mu.Unlock()
+        *reply = theReply
         return ok
 }
 
@@ -394,7 +398,11 @@ func moreUpToDate(me *Raft,candidate *RequestVoteArgs) bool {
 // the struct itself.
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+        var theReply RequestVoteReply
+	ok := rf.peers[server].Call("Raft.RequestVote", args, &theReply)
+        rf.mu.Lock()
+        defer rf.mu.Unlock()
+        *reply = theReply
 	return ok
 }
 
