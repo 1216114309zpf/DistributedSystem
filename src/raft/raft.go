@@ -23,7 +23,7 @@ import "time"
 import "math/rand"
 import "fmt"
 
-const DEBUG = true
+const DEBUG = true 
 func printf(format string, a ...interface{}) (n int, err error) {
         if DEBUG {
                 fmt.Printf(format, a...)
@@ -99,6 +99,8 @@ type Raft struct {
         commitIndex int
         lastApplied int
         electTimer  *time.Timer
+
+        applyCh     chan ApplyMsg
 
         //valatile states on leaders
         nextIndex   []int
@@ -231,14 +233,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
              rf.ResetElectTimer()
        }
 
-       AppendEntriesOnSuccess(rf,args)
+       rf.AppendEntriesOnSuccess(args)
+       if len(args.Entries) != 0 {
+            applyMsg := ApplyMsg{true,args.Entries[0].Command, args.Entries[0].Index}
+            rf.applyCh <- applyMsg
+       }
        return
 }
 
 //
 // AppendEntries when it passed the AppendEntries check
 //
-func AppendEntriesOnSuccess(rf *Raft, args *AppendEntriesArgs) {
+func (rf *Raft) AppendEntriesOnSuccess(args *AppendEntriesArgs) {
        restLength := len(rf.log)-args.PrevLogIndex-1
        for i:=0;i<len(args.Entries);i++ {
             if i < restLength {
@@ -634,6 +640,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+        rf.applyCh = applyCh
 
 	// Your initialization code here (2A, 2B, 2C).
         rf.currentTerm = 0
