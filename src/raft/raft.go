@@ -278,6 +278,8 @@ func (rf *Raft) sendAppendEntriesParallel() {
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
         
         rf.mu.Lock()
+        logLength := len(rf.log)
+        oldTerm := rf.currentTerm
         for i:=0; i<len(rf.peers); i++ {
              serverNo:=i
              replys[serverNo].Term = -1
@@ -296,17 +298,19 @@ func (rf *Raft) sendAppendEntriesParallel() {
 
         rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
-                 if replys[i].Term < 0 {//timeout before get the result of RPC call
+                 if replys[i].Term <= 0 {//timeout before get the result of RPC call
                       continue
                  }
 
-                 if replys[i].Term > rf.currentTerm { //not a leader now
-                     rf.currentTerm = replys[i].Term
-                     rf.votedFor = -1
-                     rf.role = FOLLOWER
+                 if replys[i].Term > oldTerm { //not a leader now
+                     if replys[i].Term > rf.currentTerm {
+                          rf.currentTerm = replys[i].Term
+                          rf.votedFor = -1
+                          rf.role = FOLLOWER
+                     }
                  }else{
                      //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
-                     if rf.nextIndex[i] < len(rf.log) {//a real appendEntry
+                     if rf.nextIndex[i] < logLength {//a real appendEntry
                         if replys[i].Success {
                             rf.nextIndex[i]++
                             rf.matchIndex[i]++
@@ -315,7 +319,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
                         }
                     }else{//just an empty heartbeat
                         if !replys[i].Success {
-                           // rf.nextIndex[i]--
+                            rf.nextIndex[i]--
                         }
                     }
                  }
@@ -505,6 +509,10 @@ func (rf *Raft) Follower() {
 //
 func (rf *Raft) Leader() {
       printf("Peer %d becomes leader in term %d\n",rf.me, rf.currentTerm)
+      for i:=0; i<len(rf.peers); i++ {
+              rf.nextIndex[i]  = len(rf.log)
+              rf.matchIndex[i] = 0
+      }
       for ;true; {
           rf.mu.Lock()
           if rf.role != LEADER {
@@ -558,10 +566,6 @@ func (rf *Raft) sendRequestVoteResult() bool {
       originalTerm := rf.currentTerm 
       args := RequestVoteArgs{rf.currentTerm, rf.me, rf.log[len(rf.log)-1].Term,len(rf.log)-1}
       var replys []RequestVoteReply = make([]RequestVoteReply, len(rf.peers))
-      //for i:=0;i<len(rf.peers); i++ {
-        //    replys[i].Term = -1
-          //  replys[i].VoteGranted = false
-      //}
 
       for i:=0; i<len(rf.peers); i++ {
            serverNo:=i
@@ -642,10 +646,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
         rf.nextIndex  = make([]int, len(rf.peers))
         rf.matchIndex = make([]int, len(rf.peers))
-        for i:=0; i<len(rf.peers); i++ {
-              rf.nextIndex[i]  = len(rf.log)
-              rf.matchIndex[i] = 0
-        }
 
         //begin as a follower
         go rf.Follower()
