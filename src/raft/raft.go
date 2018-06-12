@@ -426,8 +426,15 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
-
+        rf.mu.Lock()
+        defer rf.mu.Unlock()
+        term = rf.currentTerm
+        isLeader = rf.role == LEADER
+        if isLeader {
+           index = len(rf.log)
+           entry := LogEntry{rf.currentTerm, index, command}
+           rf.log = append(rf.log, entry)
+        }
 	return index, term, isLeader
 }
 
@@ -588,6 +595,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
         rf.commitIndex = 0
         rf.lastApplied = 0
+
+        rf.nextIndex  = make([]int, len(rf.peers))
+        rf.matchIndex = make([]int, len(rf.peers))
+        for i:=0; i<len(rf.peers); i++ {
+              rf.nextIndex[i]  = len(rf.log)
+              rf.matchIndex[i] = 0
+        }
 
         //begin as a follower
         go rf.Follower()
