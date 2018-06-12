@@ -276,9 +276,15 @@ func (rf *Raft) sendAppendEntriesParallel() {
         rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
              serverNo:=i
-             go func(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) {
-                 rf.sendAppendEntries(server,args,reply)
-             }(serverNo,&args,&replys[i])
+             replys[serverNo].Term = -1
+             replys[serverNo].Success = false
+             args.PrevLogIndex = rf.nextIndex[serverNo] - 1
+             args.LeaderCommit = rf.commitIndex
+             args.Entries = entries
+             if rf.nextIndex[serverNo] < len(rf.log) {
+                   args.Entries = append(args.Entries, rf.log[rf.nextIndex[serverNo]])
+             }
+             go rf.sendAppendEntries(serverNo,&args,&replys[serverNo])
         }
         rf.mu.Unlock()
 
@@ -286,12 +292,15 @@ func (rf *Raft) sendAppendEntriesParallel() {
 
         rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
-                 if replys[i].Success && replys[i].Term > rf.currentTerm {
+                 if replys[i].Term > rf.currentTerm {
                      rf.currentTerm = replys[i].Term
                      rf.votedFor = -1
                      rf.role = FOLLOWER
                  }
                  //update nextIndex and matchIndex of the leader
+                 if replys[i].Term > -1 && replys[i].Success {
+
+                 }
         }
         rf.mu.Unlock()
 }
