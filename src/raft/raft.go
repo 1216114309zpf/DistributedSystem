@@ -261,7 +261,11 @@ func AppendEntriesOnSuccess(rf *Raft, args *AppendEntriesArgs) {
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
         var theReply AppendEntriesReply
-        ok := rf.peers[server].Call("Raft.AppendEntries", args, &theReply)
+        var newArgs AppendEntriesArgs
+        rf.mu.Lock()
+        newArgs = *args
+        rf.mu.Unlock()
+        ok := rf.peers[server].Call("Raft.AppendEntries", &newArgs, &theReply)
         rf.mu.Lock()
         defer rf.mu.Unlock()
         *reply = theReply
@@ -281,7 +285,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
              args.PrevLogIndex = rf.nextIndex[serverNo] - 1
              args.LeaderCommit = rf.commitIndex
              args.Entries = entries
-             if rf.nextIndex[serverNo] < len(rf.log) {
+             if  rf.nextIndex[serverNo] < len(rf.log) {
                    args.Entries = append(args.Entries, rf.log[rf.nextIndex[serverNo]])
              }
              go rf.sendAppendEntries(serverNo,&args,&replys[serverNo])
@@ -292,17 +296,48 @@ func (rf *Raft) sendAppendEntriesParallel() {
 
         rf.mu.Lock()
         for i:=0; i<len(rf.peers); i++ {
-                 if replys[i].Term > rf.currentTerm {
+                 if replys[i].Term < 0 {//timeout before get the result of RPC call
+                      continue
+                 }
+
+                 if replys[i].Term > rf.currentTerm { //not a leader now
                      rf.currentTerm = replys[i].Term
                      rf.votedFor = -1
                      rf.role = FOLLOWER
-                 }
-                 //update nextIndex and matchIndex of the leader
-                 if replys[i].Term > -1 && replys[i].Success {
-
+                 }else{
+                     //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
+                     if rf.nextIndex[i] < len(rf.log) {//a real appendEntry
+                        if replys[i].Success {
+                            rf.nextIndex[i]++
+                            rf.matchIndex[i]++
+                        }else{
+                            rf.nextIndex[i]--
+                        }
+                    }else{//just an empty heartbeat
+                        if !replys[i].Success {
+                           // rf.nextIndex[i]--
+                        }
+                    }
                  }
         }
         rf.mu.Unlock()
+
+        //update commitIndex
+        if rf.commitIndex >= len(rf.log)-1 {
+              return 
+        }
+
+        count := 0
+
+        for i:=0; i<len(rf.peers); i++ {
+              if rf.matchIndex[i] >= rf.commitIndex+1 {
+                   count++
+              }
+        }
+
+        if count > len(rf.peers)/2 {
+              rf.commitIndex++
+        }
 }
 
 
