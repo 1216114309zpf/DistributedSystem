@@ -246,14 +246,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 // AppendEntries when it passed the AppendEntries check
 //
 func (rf *Raft) AppendEntriesOnSuccess(args *AppendEntriesArgs) {
-       restLength := len(rf.log)-args.PrevLogIndex-1
-       for i:=0;i<len(args.Entries);i++ {
-            if i < restLength {
-                 rf.log[args.PrevLogIndex + 1 + i] = args.Entries[i]
-            }else{
+
+      for i:=0; i<len(args.Entries); i++ {
+            if len(rf.log) < args.PrevLogIndex + 2 + i {
                  rf.log = append(rf.log, args.Entries[i])
+                 continue 
             }
-       }
+
+            if args.Entries[i].Term    != rf.log[args.PrevLogIndex+1+i].Term  ||
+                     args.Entries[i].Index   != rf.log[args.PrevLogIndex+1+i].Index ||
+                     args.Entries[i].Command != rf.log[args.PrevLogIndex+1+i].Command {
+                 rf.log = rf.log[:args.PrevLogIndex + 1 + i]
+                 rf.log = append(rf.log, args.Entries[i]) 
+            }
+      }
 
       if args.LeaderCommit > rf.commitIndex { 
            rf.commitIndex = min(args.LeaderCommit, args.PrevLogIndex + len(args.Entries))
