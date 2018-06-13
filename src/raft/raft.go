@@ -236,6 +236,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        rf.AppendEntriesOnSuccess(args)
        if len(args.Entries) != 0 {
             applyMsg := ApplyMsg{true,args.Entries[0].Command, args.Entries[0].Index}
+            printf("Peer %d apply Command %d successfully\n", rf.me, args.Entries[0].Command)
             rf.applyCh <- applyMsg
        }
        return
@@ -279,6 +280,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) sendAppendEntriesParallel() {
+        //printf("Length of rf.log is %d\n",len(rf.log))
         var entries []LogEntry
         args :=  AppendEntriesArgs{rf.currentTerm, rf.me, 0,0,entries,0}
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
@@ -291,8 +293,9 @@ func (rf *Raft) sendAppendEntriesParallel() {
              replys[serverNo].Term = -1
              replys[serverNo].Success = false
              args.PrevLogIndex = rf.nextIndex[serverNo] - 1
+             args.PrevLogTerm  = rf.log[args.PrevLogIndex].Term
              args.LeaderCommit = rf.commitIndex
-             args.Entries = entries
+             args.Entries = args.Entries[:0]
              if  rf.nextIndex[serverNo] < len(rf.log) {
                    args.Entries = append(args.Entries, rf.log[rf.nextIndex[serverNo]])
              }
@@ -321,11 +324,13 @@ func (rf *Raft) sendAppendEntriesParallel() {
                             rf.nextIndex[i]++
                             rf.matchIndex[i]++
                         }else{
+                            //printf("Find decrement of nextINdex\n")
                             rf.nextIndex[i]--
                         }
                     }else{//just an empty heartbeat
                         if !replys[i].Success {
                             rf.nextIndex[i]--
+                            //printf("Find decrement of nextINdex\n")
                         }
                     }
                  }
