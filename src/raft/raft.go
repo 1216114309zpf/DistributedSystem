@@ -292,24 +292,29 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 func (rf *Raft) sendAppendEntriesParallel() {
         //printf("Length of rf.log is %d\n",len(rf.log))
-        var entries []LogEntry
-        args :=  AppendEntriesArgs{rf.currentTerm, rf.me, 0,0,entries,0}
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
         
         rf.mu.Lock()
+
         logLength := len(rf.log)
         oldTerm := rf.currentTerm
+
         for i:=0; i<len(rf.peers); i++ {
              serverNo:=i
+
              replys[serverNo].Term = -1
              replys[serverNo].Success = false
-             args.PrevLogIndex = rf.nextIndex[serverNo] - 1
+
+             var entries []LogEntry
+             args :=  AppendEntriesArgs{rf.currentTerm, rf.me, 0,0,entries,0}
+             args.PrevLogIndex = (rf.nextIndex[serverNo] - 1)
              args.PrevLogTerm  = rf.log[args.PrevLogIndex].Term
              args.LeaderCommit = rf.commitIndex
              args.Entries = args.Entries[:0]
              if  rf.nextIndex[serverNo] < len(rf.log) {
                    args.Entries = append(args.Entries, rf.log[rf.nextIndex[serverNo]])
              }
+
              go rf.sendAppendEntries(serverNo,&args,&replys[serverNo])
         }
         rf.mu.Unlock()
@@ -335,13 +340,13 @@ func (rf *Raft) sendAppendEntriesParallel() {
                             rf.nextIndex[i]++
                             rf.matchIndex[i]++
                         }else{
-                            printf("Find decrement of nextINdex in real appendEntry, value of nextIndex[i] is %d now\n",rf.nextIndex[i]-1)
+                            //printf("Find decrement of nextINdex in real appendEntry, value of nextIndex[i] is %d now\n",rf.nextIndex[i]-1)
                             rf.nextIndex[i]--
                         }
                     }else{//just an empty heartbeat
                         if !replys[i].Success {
                             rf.nextIndex[i]--
-                            printf("Find decrement of nextINdex in empty heartbeat, value of nextIndex[i] is %d now\n",rf.nextIndex[i])
+                            //printf("Find decrement of nextINdex in empty heartbeat, value of nextIndex[i] is %d now\n",rf.nextIndex[i])
                         }
                     }
                  }
