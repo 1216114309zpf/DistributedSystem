@@ -217,6 +217,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        if args.Term < rf.currentTerm {
            reply.Success = false
            return 
+       }else{ //get an AppendEntries from current leader
+           if rf.role != LEADER {
+               rf.role = FOLLOWER
+               rf.ResetElectTimer()
+           }
        }
 
        if len(rf.log) < args.PrevLogIndex+1 || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
@@ -225,13 +230,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        }
 
        reply.Success = true
-       if rf.role == CANDIDATE {
-             rf.role = FOLLOWER
-       }else if rf.role == LEADER {
+       //if rf.role == CANDIDATE {
+         //    rf.role = FOLLOWER
+      // }else if rf.role == LEADER {
 
-       }else{
-             rf.ResetElectTimer()
-       }
+      // }else{
+        //     rf.ResetElectTimer()
+      // }
 
        rf.AppendEntriesOnSuccess(args)
        if len(args.Entries) != 0 {
@@ -330,13 +335,13 @@ func (rf *Raft) sendAppendEntriesParallel() {
                             rf.nextIndex[i]++
                             rf.matchIndex[i]++
                         }else{
-                            //printf("Find decrement of nextINdex\n")
+                            printf("Find decrement of nextINdex in real appendEntry, value of nextIndex[i] is %d now\n",rf.nextIndex[i]-1)
                             rf.nextIndex[i]--
                         }
                     }else{//just an empty heartbeat
                         if !replys[i].Success {
                             rf.nextIndex[i]--
-                            //printf("Find decrement of nextINdex\n")
+                            printf("Find decrement of nextINdex in empty heartbeat, value of nextIndex[i] is %d now\n",rf.nextIndex[i])
                         }
                     }
                  }
