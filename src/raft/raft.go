@@ -232,9 +232,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        reply.Success = true
 
        rf.AppendEntriesOnSuccess(args)
-       if len(args.Entries) != 0{
-            go rf.sendApplyMsg(args.Entries[0])
-       }
+       //if len(args.Entries) != 0{
+         //   go rf.sendApplyMsg(args.Entries[0])
+      // }
        return
 }
 
@@ -262,8 +262,12 @@ func (rf *Raft) AppendEntriesOnSuccess(args *AppendEntriesArgs) {
             }
       }
 
-      if args.LeaderCommit > rf.commitIndex { 
+      if args.LeaderCommit > rf.commitIndex && rf.role != LEADER { 
            rf.commitIndex = min(args.LeaderCommit, args.PrevLogIndex + len(args.Entries))
+      }
+
+      for index := rf.lastApplied+1; index <= rf.commitIndex; index++ {
+           go rf.sendApplyMsg(rf.log[index])
       }
 
       for rf.commitIndex > rf.lastApplied {
@@ -318,6 +322,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
         <-rf.appendTimer.C
 
         rf.mu.Lock()
+        defer rf.mu.Unlock()
         for i:=0; i<len(rf.peers); i++ {
                  if replys[i].Term <= 0 {//timeout before get the result of RPC call
                       continue
@@ -328,6 +333,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
                           rf.currentTerm = replys[i].Term
                           rf.votedFor = -1
                           rf.role = FOLLOWER
+                          return 
                      }
                  }else{
                      //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
@@ -347,24 +353,37 @@ func (rf *Raft) sendAppendEntriesParallel() {
                     }
                  }
         }
-        rf.mu.Unlock()
+        //rf.mu.Unlock()
 
         //update commitIndex
         if rf.commitIndex >= len(rf.log)-1 {
               return 
         }
 
-        count := 0
+        //count := 0
 
-        for i:=0; i<len(rf.peers); i++ {
-              if rf.matchIndex[i] >= rf.commitIndex+1 {
-                   count++
-              }
+        for {
+             count:=0
+             for i:=0; i<len(rf.peers); i++ {
+                  if rf.matchIndex[i] >= rf.commitIndex+1 {
+                      count++
+                  }
+             }
+             if count > len(rf.peers)/2  {
+                  rf.commitIndex++
+             }else{
+                  break
+             }
         }
+        //for i:=0; i<len(rf.peers); i++ {
+          //    if rf.matchIndex[i] >= rf.commitIndex+1 {
+            //       count++
+             // }
+       // }
 
-        if count > len(rf.peers)/2 {
-              rf.commitIndex++
-        }
+       // if count > len(rf.peers)/2 {
+         //     rf.commitIndex++
+       // }
 }
 
 
