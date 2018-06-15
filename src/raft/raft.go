@@ -23,7 +23,7 @@ import "time"
 import "math/rand"
 import "fmt"
 
-const DEBUG = true 
+const DEBUG = false 
 func printf(format string, a ...interface{}) (n int, err error) {
         if DEBUG {
                 fmt.Printf(format, a...)
@@ -338,7 +338,15 @@ func (rf *Raft) sendAppendEntriesParallel() {
                             rf.nextIndex[i]++
                         }else{
                             //printf("Find decrement of nextINdex in real appendEntry, value of nextIndex[i] is %d now\n",rf.nextIndex[i]-1)
-                            rf.nextIndex[i]--
+                            rejectTerm := rf.log[rf.nextIndex[i]].Term
+                            for {
+                               if rf.log[rf.nextIndex[i]].Term == rejectTerm && rf.nextIndex[i] != 1 {
+                                     rf.nextIndex[i]--
+                               }else{
+                                     break
+                               }
+                            }
+                            //rf.nextIndex[i]--
                         }
                     }else{//just an empty heartbeat
                         if !replys[i].Success {
