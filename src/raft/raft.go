@@ -232,9 +232,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        reply.Success = true
 
        rf.AppendEntriesOnSuccess(args)
-       //if len(args.Entries) != 0{
-         //   go rf.sendApplyMsg(args.Entries[0])
-      // }
        return
 }
 
@@ -291,13 +288,12 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) sendAppendEntriesParallel() {
-        printf("Length of rf.log is %d\n",len(rf.log))
+        //printf("Length of rf.log is %d\n",len(rf.log))
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
         
         rf.mu.Lock()
 
         logLength := len(rf.log)
-        //oldTerm := rf.currentTerm
 
         for i:=0; i<len(rf.peers); i++ {
              serverNo:=i
@@ -328,14 +324,12 @@ func (rf *Raft) sendAppendEntriesParallel() {
                       continue
                  }
 
-                 //if replys[i].Term > oldTerm { //not a leader now
-                     if replys[i].Term > rf.currentTerm {
-                          printf("Peer %d 's term is more bigger than me\n",i)
-                          rf.currentTerm = replys[i].Term
-                          rf.votedFor = -1
-                          rf.role = FOLLOWER
-                          return 
-                    // }
+                 if replys[i].Term > rf.currentTerm {
+                      printf("Peer %d 's term is more bigger than me\n",i)
+                      rf.currentTerm = replys[i].Term
+                      rf.votedFor = -1
+                      rf.role = FOLLOWER
+                      return 
                  }else{
                      //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
                      if rf.nextIndex[i] < logLength {//a real appendEntry
@@ -347,7 +341,6 @@ func (rf *Raft) sendAppendEntriesParallel() {
                             rf.nextIndex[i]--
                         }
                     }else{//just an empty heartbeat
-                        //printf("but this is just a heartBeat\n")
                         if !replys[i].Success {
                             rf.nextIndex[i]--
                             //printf("Find decrement of nextINdex in empty heartbeat, value of nextIndex[i] is %d now\n",rf.nextIndex[i])
@@ -355,14 +348,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
                     }
                  }
         }
-        //rf.mu.Unlock()
 
-        //update commitIndex
-        if rf.commitIndex >= len(rf.log)-1 {
-              return 
-        }
-
-        //count := 0
 
         for i:=0; i<len(rf.peers); i++ {
              if rf.matchIndex[i] <= rf.commitIndex {
@@ -378,16 +364,6 @@ func (rf *Raft) sendAppendEntriesParallel() {
                   rf.commitIndex = rf.matchIndex[i]
              }
         }
-        printf("Leader's commitIndex is updated to %d\n", rf.commitIndex)
-        //for i:=0; i<len(rf.peers); i++ {
-          //    if rf.matchIndex[i] >= rf.commitIndex+1 {
-            //       count++
-             // }
-       // }
-
-       // if count > len(rf.peers)/2 {
-         //     rf.commitIndex++
-       // }
 }
 
 
