@@ -230,23 +230,19 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
        }
 
        reply.Success = true
-       //if rf.role == CANDIDATE {
-         //    rf.role = FOLLOWER
-      // }else if rf.role == LEADER {
-
-      // }else{
-        //     rf.ResetElectTimer()
-      // }
 
        rf.AppendEntriesOnSuccess(args)
-       if len(args.Entries) != 0 {
-            applyMsg := ApplyMsg{true,args.Entries[0].Command, args.Entries[0].Index}
-            printf("Peer %d apply Command %d successfully\n", rf.me, args.Entries[0].Command)
-            rf.applyCh <- applyMsg
+       if len(args.Entries) != 0{
+            go rf.sendApplyMsg(args.Entries[0])
        }
        return
 }
 
+func (rf *Raft) sendApplyMsg(entry LogEntry) {
+       applyMsg := ApplyMsg{true, entry.Command, entry.Index}
+       printf("Peer %d apply Command %d successfully\n", rf.me, entry.Command)
+       rf.applyCh <- applyMsg
+}
 //
 // AppendEntries when it passed the AppendEntries check
 //
