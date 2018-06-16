@@ -22,6 +22,8 @@ import "labrpc"
 import "time"
 import "math/rand"
 import "fmt"
+import "bytes"
+import "labgob"
 
 const DEBUG = false 
 func printf(format string, a ...interface{}) (n int, err error) {
@@ -141,6 +143,13 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+        writer := new(bytes.Buffer)
+        encoder := labgob.NewEncoder(writer)
+        encoder.Encode(rf.currentTerm)
+        encoder.Encode(rf.votedFor)
+        encoder.Encode(rf.log)
+        data := writer.Bytes()
+        rf.persister.SaveRaftState(data)
 }
 
 
@@ -164,6 +173,20 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+        reader  := bytes.NewBuffer(data)
+        decoder := labgob.NewDecoder(reader)
+        var currentTerm int
+        var votedFor    int
+        var log         []LogEntry
+        if decoder.Decode(&currentTerm) != nil ||
+           decoder.Decode(&votedFor)    != nil ||
+           decoder.Decode(&log)         != nil {
+               fmt.Println("Error: decode the state failure!")
+        }else{
+               rf.currentTerm = currentTerm
+               rf.votedFor    = votedFor
+               rf.log         = log
+        }
 }
 
 
@@ -211,6 +234,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             rf.currentTerm = args.Term
             rf.role = FOLLOWER
             rf.votedFor = -1
+            rf.persist()
        }
 
        reply.Term = rf.currentTerm
@@ -258,6 +282,8 @@ func (rf *Raft) AppendEntriesOnSuccess(args *AppendEntriesArgs) {
                  rf.log = append(rf.log, args.Entries[i]) 
             }
       }
+
+      rf.persist()
 
       if args.LeaderCommit > rf.commitIndex && rf.role != LEADER { 
            rf.commitIndex = min(args.LeaderCommit, args.PrevLogIndex + len(args.Entries))
@@ -329,6 +355,7 @@ func (rf *Raft) sendAppendEntriesParallel() {
                       rf.currentTerm = replys[i].Term
                       rf.votedFor = -1
                       rf.role = FOLLOWER
+                      rf.persist()
                       return 
                  }else{
                      //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
@@ -412,6 +439,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
              rf.currentTerm = args.Term
              rf.role        = FOLLOWER
              rf.votedFor    = -1 
+             rf.persist()
         }
 
         reply.Term = rf.currentTerm
@@ -422,6 +450,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
             if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && moreUpToDate(rf,args) {
                  reply.VoteGranted = true
                  rf.votedFor = args.CandidateId
+                 rf.persist()
                  printf("Peer %d vote for peer %d, in term %d\n", rf.me, args.CandidateId, rf.currentTerm)
                  if rf.role == LEADER {
                       rf.role = FOLLOWER
@@ -512,6 +541,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
            index = len(rf.log)
            entry := LogEntry{rf.currentTerm, index, command}
            rf.log = append(rf.log, entry)
+           rf.persist()
         }
 	return index, term, isLeader
 }
@@ -576,6 +606,7 @@ func (rf *Raft) Candidate() {
          rf.currentTerm++
          rf.votedFor = rf.me
          rf.ResetElectTimer()
+         rf.persist()
          printf("Peer %d start a new election in term %d\n", rf.me, rf.currentTerm)
          rf.mu.Unlock()
 
@@ -612,6 +643,7 @@ func (rf *Raft) sendRequestVoteResult() bool {
                      rf.votedFor    = -1
                      rf.role        = FOLLOWER
                      flag           = true
+                     rf.persist()
                }
 
                if replys[i].VoteGranted && rf.currentTerm == originalTerm {
