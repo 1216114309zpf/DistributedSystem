@@ -316,6 +316,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) sendAppendEntriesParallel() {
         //printf("Length of rf.log is %d\n",len(rf.log))
         var replys []AppendEntriesReply = make([]AppendEntriesReply, len(rf.peers))
+        var args   []AppendEntriesArgs  = make([]AppendEntriesArgs, len(rf.peers))
         
         rf.mu.Lock()
 
@@ -327,17 +328,19 @@ func (rf *Raft) sendAppendEntriesParallel() {
              replys[serverNo].Term = -1
              replys[serverNo].Success = false
 
-             var entries []LogEntry
-             args :=  AppendEntriesArgs{rf.currentTerm, rf.me, 0,0,entries,0}
-             args.PrevLogIndex = (rf.nextIndex[serverNo] - 1)
-             args.PrevLogTerm  = rf.log[args.PrevLogIndex].Term
-             args.LeaderCommit = rf.commitIndex
-             args.Entries = args.Entries[:0]
+             args[serverNo].Term = rf.currentTerm
+             args[serverNo].LeaderId = rf.me
+             args[serverNo].PrevLogIndex = rf.nextIndex[serverNo] - 1
+             args[serverNo].PrevLogTerm  = rf.log[args[serverNo].PrevLogIndex].Term
+             args[serverNo].LeaderCommit = rf.commitIndex
+             args[serverNo].Entries = nil
              if  rf.nextIndex[serverNo] < len(rf.log) {
-                   args.Entries = append(args.Entries, rf.log[rf.nextIndex[serverNo]])
+                   for index:=rf.nextIndex[serverNo]; index<len(rf.log); index++ {
+                        args[serverNo].Entries = append(args[serverNo].Entries, rf.log[index])
+                   }
              }
 
-             go rf.sendAppendEntries(serverNo,&args,&replys[serverNo])
+             go rf.sendAppendEntries(serverNo,&args[serverNo],&replys[serverNo])
         }
         rf.mu.Unlock()
 
@@ -361,8 +364,10 @@ func (rf *Raft) sendAppendEntriesParallel() {
                      //update nextIndex and matchIndex of the leader if this is a real appendEntry instead of a heartbeat
                      if rf.nextIndex[i] < logLength {//a real appendEntry
                         if replys[i].Success {
-                            rf.matchIndex[i] = rf.nextIndex[i]
-                            rf.nextIndex[i]++
+                            rf.nextIndex[i] += len(args[i].Entries)
+                            rf.matchIndex[i] = rf.nextIndex[i]-1
+                            //rf.matchIndex[i] = rf.nextIndex[i]
+                            //rf.nextIndex[i]++
                         }else{
                             //printf("Find decrement of nextINdex in real appendEntry, value of nextIndex[i] is %d now\n",rf.nextIndex[i]-1)
                             rejectTerm := rf.log[rf.nextIndex[i]].Term
