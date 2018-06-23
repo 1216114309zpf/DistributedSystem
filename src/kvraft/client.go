@@ -39,7 +39,30 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 
 	// You will have to modify this function.
-	return ""
+	//return ""
+        args := GetArgs{key}
+        value := ""
+        for {
+           flag := false
+           for i:=0; i<len(ck.servers); i++ {
+                 reply := new(GetReply)
+                 ok := ck.servers[i].Call("KVServer.Get", &args,reply)
+                 if ok {
+                     if !reply.WrongLeader {
+                         
+                         if reply.Err == "" {
+                             value := reply.Value
+                             flag=true
+                             break
+                         }
+                     }
+                 }
+           }
+           if flag {
+               break
+           }
+        }
+        return value
 }
 
 //
@@ -54,6 +77,26 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+        args := PutAppendArgs{key,value,op}
+        for {
+           flag := false
+           for i:=0; i<len(ck.servers); i++ {
+                 reply := new(PutAppendReply)
+                 ok := ck.servers[i].Call("KVServer.PutAppend", &args,reply)
+                 if ok {
+                     if !reply.WrongLeader {
+                         if reply.Err == "" 
+                             flag=true
+                             break
+                         }
+                     }
+                 }
+           }
+           if flag {
+               break
+           }
+        }
+        return
 }
 
 func (ck *Clerk) Put(key string, value string) {
