@@ -25,6 +25,8 @@ type Op struct {
         Op      string
         Key     string
         Value   string
+        CommandId  int
+        ClientId   int
 }
 
 type KVServer struct {
@@ -42,12 +44,17 @@ type KVServer struct {
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-        command := Op{"Get",args.Key,""}
+        command := Op{"Get", args.Key, "", args.ClientId, args.CommandId}
         index, preTerm, isLeader = kv.rf.Start(command) 
+
         if !isLeader {
             reply.WrongLeader = true
             return
         }
+
+        reply.WrongLeader = false
+        
+
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -95,6 +102,20 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
         kv.data = make(map[string]string)
-
+        
+        go kv.applyCommand()
 	return kv
+}
+
+func (kv *KVserver) applyCommand() {
+       for kv.applyCh != nil {
+           command := <-kv.applyCh
+           if command.Op == "Get" {
+
+           }else if command.Op == "Put" {
+
+           }else{//append
+
+           }
+       }
 }
